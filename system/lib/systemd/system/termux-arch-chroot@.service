@@ -1,0 +1,12 @@
+[Unit]
+Description=Termux Arch Chroot %i Container Service
+
+[Service]
+Type=simple
+Environment="INIT=/usr/local/bin/init"
+Environment="INIT_ARGS="
+WorkingDirectory=/var/lib/machines
+ExecStart=/usr/bin/termux-arch-chroot -N -l 0 %i ${INIT} ${INIT_ARGS}
+
+[Install]
+WantedBy=machines.target

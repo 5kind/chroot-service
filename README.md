@@ -1,4 +1,4 @@
-<h1 align="center">Systemless Mkshrc</h1>
+<h1 align="center">Systemless Chroot Service</h1>
 
 <div align="center">
   <!-- Version -->
@@ -15,18 +15,21 @@
       alt="_time_stamp_" /></div>
 
 <div align="center">
-  <strong>Systemless Mkshrc provide profile support for mkshrc and makes shell profile easy.
+  <strong>Systemless Chroot Service provide chroot service support and others scripts.
 </div>
 
 <div align="center">
   <h3>
-    <a href="https://github.com/5kind/MMT-Extended">
+    <a href="https://github.com/5kind/termux-arch-chroot">
       Source Code
     </a>
     <span>
   </h3>
 </div>
 
-### Usage
-- Install this module and [Termux APP](https://github.com/termux/termux-app)
-- Then run shell as root
+## Boot scripts
+next scripts in /etc/chroot-service will be run after boot.
+- post-fs-data.d/*.sh
+- profile.d/*.sh
+- service.d/*.sh
+- boot-completed.d/*.sh

@@ -1,6 +1,6 @@
 {
-  "version": "v1.0",
+  "version": "v1.34.1-Magisk",
   "versionCode": 1,
-  "zipUrl": "https://raw.githubusercontent.com/5kind/mkshrc/install.zip",
-  "changelog": "https://raw.githubusercontent.com/5kind/mkshrc/changelog.md"
+  "zipUrl": "https://raw.githubusercontent.com/5kind/busybox/install.zip",
+  "changelog": "https://raw.githubusercontent.com/5kind/busybox/changelog.md"
 }

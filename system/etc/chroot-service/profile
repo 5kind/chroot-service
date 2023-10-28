@@ -1,0 +1,18 @@
+# shellcheck disable=SC2059 # $1 and $2 can contain the printf modifiers
+out() { printf "$1 $2\n" "${@:3}"; }
+error() { out "==> ERROR:" "$@"; } >&2
+warning() { out "==> WARNING:" "$@"; } >&2
+msg() { out "==>" "$@"; }
+die() { error "$@"; exit 1; }
+
+ignore_error() {
+  "$@" 2>/dev/null
+  return 0
+}
+
+if test -d $ETCDIR/profile.d/; then
+        for profile in $ETCDIR/profile.d/*.sh; do
+                test -r "$profile" && . "$profile"
+        done
+        unset profile
+fi
