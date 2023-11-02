@@ -29,7 +29,7 @@
 
 ## Boot scripts
 next scripts in /etc/chroot-service will be run after boot.
-- post-fs-data.d/*.sh
 - profile.d/*.sh
+- post-fs-data.d/*.sh
 - service.d/*.sh
 - boot-completed.d/*.sh
