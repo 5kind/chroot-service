@@ -5,9 +5,9 @@
 #
 # Copyright (C) 2023 5kind
 MODDIR=${0%/*}
-MODNAME="${MODDIR##*/}"
-ETCDIR="/etc/$MODNAME"
-LOGFILE="/cache/$MODNAME.log"
+MODID="${MODDIR##*/}"
+ETCDIR="/etc/$MODID"
+LOGFILE="/cache/$MODID.log"
 # config
 SLEEP_TIME=5
 

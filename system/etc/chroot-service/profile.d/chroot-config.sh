@@ -4,7 +4,7 @@ PREFIX=/data/data/com.termux/files/usr
 CHROOT=termux-arch-chroot	# set chroot
 ACTIVE_PATH="$PREFIX/bin"	# set script $PATH
 # - set chroot args         # set /boot
-MOUNT_ARGS="-f /etc/$MODNAME/fstab -b /data/adb/modules/chroot-service:/boot"
+MOUNT_ARGS="-f /etc/$MODID/fstab -b /data/adb/modules/chroot-service:/boot"
 #CHROOT_USER=root           # set user
 KEEPRESOLVCONF=false        # /etc/resolv.conf
 UNSHARE=true                # unshare
