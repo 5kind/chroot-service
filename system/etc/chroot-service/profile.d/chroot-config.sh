@@ -7,7 +7,7 @@ ACTIVE_PATH="$PREFIX/bin"	# set script $PATH
 MOUNT_ARGS="-f /etc/$MODID/fstab -b /data/adb/modules/chroot-service:/boot"
 #CHROOT_USER=root           # set user
 KEEPRESOLVCONF=false        # /etc/resolv.conf
-UNSHARE=true                # unshare
+UNSHARE=false               # unshare
 MOUNTED=true                # set correct chrootdir mount status
 # - if chrootdir MOUNTED, we wait for it, else we bind & remount to itself.
 LOG_LEVEL=0                 # set log level
