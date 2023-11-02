@@ -9,6 +9,7 @@ ensure_mounted() {
     done
 }
 
+# Make sure $exe $args is available.
 ensure_executable() {
     local exe=$1
     shift
@@ -20,6 +21,7 @@ ensure_executable() {
     done
 }
 
+# Before chroot, make sure bash is available.
 ensure_bash_executable() {
     case $CHROOT in
         *arch-chroot*)          ;;
@@ -27,4 +29,12 @@ ensure_bash_executable() {
     esac
     [ -z $BASH ] && BASH=/bin/bash
     ensure_executable $BASH --version
+}
+
+# This function use to make sure boot-completed.d after /data decryption;
+# you may need to unlock your device after reboot;
+ensure_data_decryption(){
+    while [ ! -e /data/data/android ] ;do
+        sleep $SLEEP_TIME
+    done
 }
