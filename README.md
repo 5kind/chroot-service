@@ -15,7 +15,7 @@
       alt="_time_stamp_" /></div>
 
 <div align="center">
-  <strong>Systemless Chroot Service provide chroot service support and others scripts.
+  <strong>Systemless Chroot Service provide chroot service support and others scripts, still in early development.
 </div>
 
 <div align="center">
