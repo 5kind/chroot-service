@@ -31,10 +31,10 @@ ensure_bash_executable() {
     ensure_executable $BASH --version
 }
 
-# This function use to make sure boot-completed.d after /data decryption;
-# you may need to unlock your device after reboot;
-ensure_data_decryption(){
-    while [ ! -e /data/data/android ] ;do
+# This function use to make sure boot-completed.d after sys.boot_completed;
+# you may need to unlock your device after reboot; only for magisk mode.
+ensure_boot_completed(){
+    while [ "$(getprop sys.boot_completed)" != "1" ]; do
         sleep $SLEEP_TIME
-    done
+    done    
 }

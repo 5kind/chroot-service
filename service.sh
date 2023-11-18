@@ -1,4 +1,4 @@
-# chroot-service configure	-*- shell-script -*-
+# chroot-service service.sh	-*- shell-script -*-
 # SPDX-License-Identifier: GPL-2-or-later
 #
 # This file is part of chroot-service modules.
@@ -8,17 +8,25 @@ MODDIR=${0%/*}
 MODID="${MODDIR##*/}"
 ETCDIR="/etc/$MODID"
 LOGFILE="/cache/$MODID.log"
-# config
-SLEEP_TIME=5
+
+post_mount(){
+    > "$LOGFILE"
+    printf "* Service start with Magisk mode.\n"
+    serviced_block post-mount.d true
+}
+
+boot_completed(){
+    printf "* Waitting for /data decryption...\n"
+    ensure_boot_completed
+    serviced_block boot-completed.d false
+    printf "* Service start completed.\n"
+}
 
 main(){
     source $ETCDIR/profile
-    serviced_block post-fs-data.d true
+    [ "$KSU" ] || post_mount
     serviced_block service.d false
-    printf "* Waitting for /data decryption...\n"
-    ensure_data_decryption
-    serviced_block boot-completed.d false
-    printf "* Service start completed.\n"
-} 2>&1 > "$LOGFILE"
+    [ "$KSU" ] || boot_completed
+} 2>&1 >> "$LOGFILE"
 
 main

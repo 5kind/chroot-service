@@ -1,19 +1,19 @@
-### Chroot Config
-PREFIX=/data/data/com.termux/files/usr
+### Chroot Config Profile
+TERMUX_FILES=/data/data/com.termux/files
+PREFIX=$TERMUX_FILES/usr
 #BASH="$PREFIX/bin/bash"	# set bash  - use shebang(/bin/bash) by default.
 CHROOT=termux-arch-chroot	# set chroot
 ACTIVE_PATH="$PREFIX/bin"	# set script $PATH
 # - set chroot args         # set /boot
-MOUNT_ARGS="-f /etc/$MODID/fstab -b /data/adb/modules/chroot-service:/boot"
+MOUNT_ARGS="-f /etc/$MODID/fstab -b /data/adb/modules/$MODID:/boot"
 #CHROOT_USER=root           # set user
 KEEPRESOLVCONF=false        # /etc/resolv.conf
 UNSHARE=false               # unshare
 MOUNTED=true                # set correct chrootdir mount status
-# - if chrootdir MOUNTED, we wait for it, else we bind & remount to itself.
+# - if chrootdir MOUNTED, we wait for it, else we bind remount to itself.
 LOG_LEVEL=0                 # set log level
 UNSHARE_LEVEL=2             # set unshare level
 SLEEP_TIME=5                # set wait time for bash or mount
-#CHROOTDIR=/data/local/mnt	# set chrootdir
 # - set chroot environment
 ENVIRONMENT="/bin/env PATH=/usr/local/sbin:/usr/local/bin\
 :/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:$PATH"

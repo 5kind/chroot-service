@@ -3,4 +3,4 @@ name=Chroot Container service
 version=1.0
 versionCode=1
 author=5kind
-description=Initialize chroot container
+description=Initialize linux chroot container

@@ -3,5 +3,6 @@
 
 # <file system> <dir> <type> <options> <dump> <pass>
 tmpfs	/dev/shm	tmpfs	mode=1777,nosuid,nodev	0	0
-/dev/block/mmcblk0	/data/local/mnt	f2fs	defaults	0	2
-tmpfs   /data/data/com.termux/files/usr/tmp/.X11-unix   tmpfs   mode=1777,nosuid,nodev,noauto  0   0
+/dev/block/mmcblk0	/data/local/mnt	f2fs	defaults	0	0
+tmpfs   /data/data/com.termux/files/usr/tmp/.X11-unix   tmpfs   mode=1777,nosuid,nodev,noauto   0   0
+cgroup  /sys/fs/cgroup/systemd  cgroup  none,nosuid,nodev,noexec,relatime,xattr,name=systemd    0   0

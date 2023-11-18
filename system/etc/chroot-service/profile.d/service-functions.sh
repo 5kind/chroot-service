@@ -14,6 +14,7 @@ service_start(){
     printf "\n"
 }
 
+# run serviced/*.sh with block mode or not
 serviced_block(){
     local serviced=$1
     local blocking=$2

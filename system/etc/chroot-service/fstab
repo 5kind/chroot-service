@@ -5,6 +5,7 @@
 /data	/data	none	bind	0	0
 /system	/system	none	bind	0	0
 /vendor	/vendor	none	bind	0	0
+# /apex	/apex	none	rbind	0	0
 /system/apex	/apex	none	bind	0	0
 /dev/shm	/dev/shm	none	bind	0	0
 /product	/product	none	bind	0	0
@@ -12,4 +13,4 @@
 /system_ext	/system_ext	none	bind	0	0
 /linkerconfig	/linkerconfig	none	bind	0	0
 /dev/binderfs	/dev/binderfs	none	bind	0	0
-/mnt/vendor/persist	/mnt/vendor/persist	none	bind	0	0
+# /mnt/vendor/persist	/mnt/vendor/persist	none	bind,ro	0	0

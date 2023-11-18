@@ -1,0 +1,18 @@
+# chroot-service boot-completed.sh	-*- shell-script -*-
+# SPDX-License-Identifier: GPL-2-or-later
+#
+# This file is part of chroot-service modules.
+#
+# Copyright (C) 2023 5kind
+MODDIR=${0%/*}
+MODID="${MODDIR##*/}"
+ETCDIR="/etc/$MODID"
+LOGFILE="/cache/$MODID.log"
+
+boot_completed(){
+    source $ETCDIR/profile
+    serviced_block boot-completed.d false
+    printf "* Service start completed.\n"
+} 2>&1 >> "$LOGFILE"
+
+boot_completed
