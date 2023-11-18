@@ -15,4 +15,5 @@ post_mount(){
     serviced_block post-mount.d true
 } 2>&1 > "$LOGFILE"
 
+mv "$LOGFILE" "$LOGFILE".bak
 post_mount

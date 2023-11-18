@@ -13,3 +13,5 @@ elif [ -f /etc/hostname ] ;then
 fi
 # install mtab
 ln -s /proc/self/mounts $MODPATH/system/etc/mtab
+# remove scripts
+[ "$KSU" ] || rm -f $MODPATH/{boot-completed,post-mount}.sh

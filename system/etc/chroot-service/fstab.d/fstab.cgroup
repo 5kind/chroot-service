@@ -1,0 +1,7 @@
+/acct   /acct   none    bind    0   0
+/dev/blkio  /dev/blkio  none    bind    0   0
+/dev/cpuctl /dev/cpuctl none    bind    0   0
+/dev/cpuset /dev/cpuset none    bind    0   0
+/dev/memcg  /dev/memcg  none    bind    0   0
+/dev/stune  /dev/stune  none    bind    0   0
+/sys/fs/cgroup  /sys/fs/cgroup  none    rbind   0   0

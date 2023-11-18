@@ -10,7 +10,6 @@ ETCDIR="/etc/$MODID"
 LOGFILE="/cache/$MODID.log"
 
 post_mount(){
-    > "$LOGFILE"
     printf "* Service start with Magisk mode.\n"
     serviced_block post-mount.d true
 }
@@ -29,4 +28,5 @@ main(){
     [ "$KSU" ] || boot_completed
 } 2>&1 >> "$LOGFILE"
 
+[ "$KSU" ] || mv "$LOGFILE" "$LOGFILE".bak
 main

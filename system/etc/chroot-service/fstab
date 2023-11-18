@@ -9,7 +9,7 @@
 /system/apex	/apex	none	bind	0	0
 /dev/shm	/dev/shm	none	bind	0	0
 /product	/product	none	bind	0	0
-/etc/hosts	/etc/hosts	none	bind	0	0
+# /etc/hosts	/etc/hosts	none	bind	0	0
 /system_ext	/system_ext	none	bind	0	0
 /linkerconfig	/linkerconfig	none	bind	0	0
 /dev/binderfs	/dev/binderfs	none	bind	0	0
