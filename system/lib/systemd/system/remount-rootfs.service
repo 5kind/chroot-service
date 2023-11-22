@@ -1,0 +1,10 @@
+[Unit]
+Description=Remount rootfs with exec,suid,relatime,dev options.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mount -o remount,exec,suid,relatime,dev /
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

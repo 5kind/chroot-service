@@ -1,10 +1,14 @@
 # Next function API is accessible to scripts.
 ensure_mounted() {
-    $MOUNTED || return
     local folder="$1"
-
     while ! mountpoint -q "$folder" 2>/dev/null ;do
-        warning "$folder is not mountpoint. Waiting ..."
+        sleep $SLEEP_TIME
+    done
+}
+
+ensure_exist(){
+    local folder="$1"
+    while [ ! -e $folder ] ;do
         sleep $SLEEP_TIME
     done
 }
@@ -16,7 +20,6 @@ ensure_executable() {
     local args=${@}
 
     while ! $exe $args 2>/dev/null ;do
-        warning "$exe is not executable. Waiting ..."
         sleep $SLEEP_TIME
     done
 }
@@ -32,9 +35,15 @@ ensure_bash_executable() {
 }
 
 # This function use to make sure boot-completed.d after sys.boot_completed;
-# you may need to unlock your device after reboot; only for magisk mode.
 ensure_boot_completed(){
     while [ "$(getprop sys.boot_completed)" != "1" ]; do
         sleep $SLEEP_TIME
     done    
+}
+
+# This function make sure data has been decrypted, require unlock the devices; 
+ensure_data_decrypted(){
+    while ! mountpoint /storage/emulated; do
+        sleep $SLEEP_TIME
+    done
 }

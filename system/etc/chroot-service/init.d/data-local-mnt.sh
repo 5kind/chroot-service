@@ -6,7 +6,8 @@ LOGFILE=/cache/${CHROOTDIR##*/}.log
 
 chroot_init() {
     ensure_bash_executable
-    ensure_mounted $CHROOTDIR
+    # ensure_data_decrypted
+    $MOUNTED && ensure_mounted $CHROOTDIR
     exec $CHROOT_INIT
 } 2>&1 > "$LOGFILE"
 

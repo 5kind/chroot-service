@@ -1,6 +1,4 @@
 #!/bin/sh
-set -e
-
 export PATH=$PATH:/system/xbin:/system/bin
 
 ln_cg(){
@@ -8,7 +6,7 @@ ln_cg(){
     local scg="/sys/fs/cgroup/${2}"
 
     if mountpoint -q "${src}" && [ ! -e "${scg}" ]; then
-        ln -s "${src}" "${scg}" || true
+        ln -s "${src}" "${scg}"
     fi
 }
 
@@ -29,6 +27,9 @@ for cg in blkio cpu cpuacct cpuset devices freezer memory schedtune; do
         fi
 
         if ! mountpoint -q $(realpath /sys/fs/cgroup/${cg}); then
-                mount -t cgroup -o "${cg}" cgroup "/sys/fs/cgroup/${cg}" || true
+                mount -t cgroup -o "${cg}" cgroup "/sys/fs/cgroup/${cg}"
         fi
 done
+
+cg2=$(awk '$3 == "cgroup2" { print $2 }' /proc/self/mounts|head -n 1)
+[ -d "${cg2}" ] && ln_cg "${cg2}" unified

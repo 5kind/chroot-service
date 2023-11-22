@@ -1,0 +1,22 @@
+### Mount configuration
+## Android System
+lxc.mount.entry = /data data none bind,create=dir 0 0
+lxc.mount.entry = /system system none bind,create=dir 0 0
+lxc.mount.entry = /vendor vendor none bind,create=dir 0 0
+lxc.mount.entry = /odm odm none bind,create=dir 0 0
+# lxc.mount.entry = /apex apex none rbind,create=dir 0 0
+lxc.mount.entry = /system/apex apex none bind,create=dir 0 0
+# lxc.mount.entry = /product productnone rbind,create=dir 0 0
+# lxc.mount.entry = /system_ext system_ext none rbind,create=dir 0 0
+lxc.mount.entry = /linkerconfig linkerconfig none bind,create=dir 0 0
+## Devices mount
+lxc.mount.entry = /dev/net/tun dev/net/tun none bind,create=file 0 0
+lxc.mount.entry = /dev/binderfs dev/binderfs none bind,create=dir 0 0
+# lxc.mount.entry = /mnt/vendor/persist	mnt/vendor/persist none bind,ro,create=dir 0 0
+## Sdcard
+lxc.mount.entry = /storage/emulated/0 mnt/sdcard none bind,create=dir 0 0
+## Termux Share
+lxc.mount.entry = /data/data/com.termux/files/home/.suroot root none bind,create=dir 0 0
+lxc.mount.entry = /data/data/com.termux/files/usr/tmp/.X11-unix tmp/.X11-unix none bind,create=dir 0 0
+## KernelSU Disallow
+lxc.mount.entry = /dev/null /data/adb/ksud none bind 0 0

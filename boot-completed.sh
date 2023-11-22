@@ -12,6 +12,7 @@ LOGFILE="/cache/$MODID.log"
 boot_completed(){
     source $ETCDIR/profile
     serviced_block boot-completed.d false
+    ensure_data_decrypted
     printf "* Service start completed.\n"
 } 2>&1 >> "$LOGFILE"
 

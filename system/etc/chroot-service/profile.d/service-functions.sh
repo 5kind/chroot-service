@@ -8,7 +8,7 @@ service_start(){
             printf "%s" "[FAILED]"
         else
             . "$service" &
-            printf "%s" "[  OK  ]"
+            printf "%s" "[RUNNING]"
         fi
     fi
     printf "\n"

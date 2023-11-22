@@ -1,3 +1,4 @@
+ensure_data_decrypted
 while read line; do
   src=$(echo "$line" | awk '{print $1}')
   dest=$(echo "$line" | awk '{print $2}')

@@ -9,6 +9,8 @@ mount_tmpfs() {
     chcon --reference=$PREFIX $dest
 }
 
+ensure_exist $PREFIX
 mount_tmpfs $PREFIX/tmp
 mount_tmpfs $PREFIX/tmp/.X11-unix
 mount_tmpfs $PREFIX/var/run rw,nosuid,nodev,relatime,mode=755
+chown $(stat -c "%U:%G" $PREFIX) $PREFIX/var/run
