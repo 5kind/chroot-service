@@ -1,0 +1,11 @@
+[Unit]
+Description=Mask /data/adb/ksud to disable KernelSU /system/bin/su
+
+[Mount]
+What=/dev/null
+Where=/data/adb/ksud
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target

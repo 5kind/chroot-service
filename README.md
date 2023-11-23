@@ -4,9 +4,6 @@
   <!-- Version -->
     <img src="https://img.shields.io/badge/Version-v1.0-blue.svg?longCache=true&style=popout-square"
       alt="Version" />
-  <!-- Last Updated -->
-    <img src="https://img.shields.io/badge/Updated-September 11, 2023-green.svg?longCache=true&style=flat-square"
-      alt="_time_stamp_" />
   <!-- Min Magisk -->
     <img src="https://img.shields.io/badge/MinMagisk-20.4-red.svg?longCache=true&style=flat-square"
       alt="_time_stamp_" />
@@ -30,6 +27,23 @@
 ## Boot scripts
 next scripts in /etc/chroot-service will be run after boot.
 - profile.d/*.sh
-- post-fs-data.d/*.sh
+- post-mount.d/*.sh
 - service.d/*.sh
 - boot-completed.d/*.sh
+
+## Support applet
+- adbd
+- fstab
+- hostname
+- setup-cgroups
+- dev-link-block
+- Termux-Tmpfs
+- Termux-LXC-Autostart.sh
+- Chroot /data/local/mnt init
+
+## Usage
+### Termux-Arch-Chroot :
+Chroot template script under [init.d](system/etc/chroot-service/init.d/data-local-mnt.sh)
+
+### Termux-LXC-Autostart :
+Install lxc & set contianer config: `lxc.start.auto = 1`
