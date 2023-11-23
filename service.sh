@@ -26,7 +26,7 @@ main(){
     [ "$KSU" ] || post_mount
     serviced_block service.d false
     [ "$KSU" ] || boot_completed
-} 2>&1 >> "$LOGFILE"
+} >> "$LOGFILE" 2>&1
 
 [ "$KSU" ] || mv "$LOGFILE" "$LOGFILE".bak
 main

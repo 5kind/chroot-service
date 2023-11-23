@@ -14,6 +14,6 @@ boot_completed(){
     serviced_block boot-completed.d false
     ensure_data_decrypted
     printf "* Service start completed.\n"
-} 2>&1 >> "$LOGFILE"
+} >> "$LOGFILE" 2>&1
 
 boot_completed

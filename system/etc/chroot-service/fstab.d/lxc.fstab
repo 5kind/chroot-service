@@ -19,4 +19,4 @@ lxc.mount.entry = /storage/emulated/0 mnt/sdcard none bind,create=dir 0 0
 lxc.mount.entry = /data/data/com.termux/files/home/.suroot root none bind,create=dir 0 0
 lxc.mount.entry = /data/data/com.termux/files/usr/tmp/.X11-unix tmp/.X11-unix none bind,create=dir 0 0
 ## KernelSU Disallow
-lxc.mount.entry = /dev/null /data/adb/ksud none bind 0 0
+lxc.mount.entry = /dev/null data/adb/ksud none bind 0 0

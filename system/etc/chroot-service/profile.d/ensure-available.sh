@@ -43,7 +43,5 @@ ensure_boot_completed(){
 
 # This function make sure data has been decrypted, require unlock the devices; 
 ensure_data_decrypted(){
-    while ! mountpoint /storage/emulated; do
-        sleep $SLEEP_TIME
-    done
+    ensure_mounted /storage/emulated
 }
