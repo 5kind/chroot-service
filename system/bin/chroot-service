@@ -1,0 +1,84 @@
+#!/data/data/com.termux/files/usr/bin/sh
+
+# Load environment variables:
+# PREFIX, SVDIR, PATH, etc.
+source /etc/chroot-service/profile
+
+usage() {
+cat <<EOF
+Usage: chroot-service [-v] [-w sec] command service ...
+This script forwards commands to the sv command.
+
+Options:
+  --help, -h     Show this help message
+  enable [svc]   Enable the specified chroot service
+  disable [svc]  Disable the specified chroot service
+  login [svc]    Login to the specified chroot service
+  *              forward all other commands to \`sv *\`
+EOF
+}
+
+enable() {
+    if [ -z "$1" ]; then
+        echo "Error: No service specified to enable." >&2
+        usage
+        exit 1
+    fi
+    rm -f "$SVDIR/$1/down"
+    sv up "$1"
+    shift
+    if [ -n "$1" ]; then
+        enable "${@}"
+    fi
+}
+
+disable() {
+    if [ -z "$1" ]; then
+        echo "Error: No service specified to disable." >&2
+        usage
+        exit 1
+    fi
+    touch "$SVDIR/$1/down"
+    sv down "$1"
+    shift
+    if [ -n "$1" ]; then
+        disable "${@}"
+    fi
+}
+
+login () {
+    if [ -z "$1" ]; then
+        echo "Error: No service specified to login." >&2
+        usage
+        exit 1
+    fi
+    eval $(PWD="$SVDIR/$1" head "$SVDIR/$1/run")
+    # load chrootdir
+    if [ -z "$chrootdir" ]; then
+        echo "Error: chrootdir not found in $SVDIR/$1/run." >&2
+        exit 1
+    fi
+    chroot /proc/$(cat $SVDIR/$1/supervise/pid)/root/"$chrootdir" /bin/sh -l
+}
+
+case "$1" in
+    --help|-h|help)
+        usage
+        exit 0
+        ;;
+    enable)
+        shift
+        enable "${@}"
+        ;;
+    disable)
+        shift
+        disable "${@}"
+        ;;
+    login)
+        shift
+        login "${@}"
+        ;;
+    *)
+        exec sv "$@"
+        ;;
+esac

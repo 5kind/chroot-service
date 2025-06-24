@@ -19,6 +19,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Step 1.5: Build the module
+      - name: Build module
+        run: |
+          echo "Building the module..."
+          chmod +x common/make.sh
+          ./common/make.sh
+
       # Step 2: Validate version info
       - name: Validate and Auto-Update update.json
         id: update_json
@@ -107,6 +114,6 @@ jobs:
           # Uncomment the line below if you want this to be a draft Release
           # draft: true
           # Uncomment the line below if you want this to be a prerelease
-          # prerelease: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

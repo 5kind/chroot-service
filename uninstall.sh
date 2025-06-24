@@ -4,6 +4,9 @@ global_service_d=/data/adb/service.d
 for service_script in $service_scripts; do
   rm -f "$global_service_d/$service_script"
 done
+
+[ -f "/data/adb/chroot-service/remove" ] && rm -f "/data/adb/chroot-service"
+
 # Don't modify anything after this
 if [ -f $INFO ]; then
   while read LINE; do
