@@ -1,0 +1,49 @@
+#!/bin/sh
+
+command_usage() {
+    cat <<EOF
+This is a wrapper provided by 'unchroot'.
+It will execute 'reboot -p' inside the host's filesystem.
+Next is the help output from 'reboot $@':
+---
+EOF
+    unchroot_exec "$cmd" "$@"
+}
+
+prepend_path () {
+    case ":$PATH:" in
+        *:"$1":*)
+            ;;
+        *)
+            PATH="$1${PATH:+:$PATH}"
+    esac
+}
+
+unchroot_exec() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "This script must be run with root privileges" >&2
+        exit 1
+    fi
+    local target_root=/proc/$pid/root
+    for found_path in ${target_root}/*bin ${target_root}/*/*bin; do
+        if [ -d "$found_path" ] || [ -L "$found_path" ]; then
+            relative_path="${found_path#$target_root}"
+            prepend_path "$relative_path"
+        fi
+    done
+    export PATH
+    if [ -z "$userspec" ]; then
+        exec chroot "$target_root"/ "$@"
+    else
+        exec chroot --userspec="$userspec" "$target_root"/ "$@"
+    fi
+}
+
+pid=1
+cmd="reboot"
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    command_usage "$@"
+    exit 0
+else
+    unchroot_exec "$cmd" -p "$@"
+fi

@@ -1,0 +1,54 @@
+#!/bin/sh
+
+SYSTEMCTL_PY="systemctl3.py"
+ROOTLESS_COMMANDS="status show cat list-units list-unit-files is-active is-enabled is-failed help"
+
+out() {
+    prefix="$1"
+    shift
+    printf '%s %s\n' "$prefix" "$*"
+}
+error() { out "ERROR:" "$@" >&2; }
+warning() { out "WARNING:" "$@" >&2; }
+
+check_dependencies() {
+    if ! [ -x "/usr/bin/python3" ]; then
+        error "Python 3 is not installed."
+        return 1
+    elif ! command -v "$SYSTEMCTL_PY" >/dev/null 2>&1; then
+        error "$SYSTEMCTL_PY not found in \$PATH."
+        return 1
+    fi
+}
+
+check_dependencies || exit 1
+
+needs_root=true
+if [ "$(id -u)" -eq 0 ]; then
+    needs_root=false
+elif [ $# -gt 0 ]; then
+    case " $ROOTLESS_COMMANDS " in
+        *" $1 "*) needs_root=false;;
+    esac
+    case " $@ " in
+        *" --user "*) needs_root=false;;
+        *" --system "*) needs_root=true;;
+    esac
+fi
+
+if ! $needs_root; then
+    exec "$SYSTEMCTL_PY" "$@"
+else
+    if command -v pkexec >/dev/null 2>&1 && \
+    "$SYSTEMCTL_PY" --quiet is-active polkit 2>/dev/null|| \
+    "$SYSTEMCTL_PY" --quiet is-active polkitd 2>/dev/null; then
+        exec pkexec "$SYSTEMCTL_PY" "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        exec sudo "$SYSTEMCTL_PY" "$@"
+    elif command -v su >/dev/null 2>&1; then
+        exec su -c "$SYSTEMCTL_PY $*"
+    else
+        warning "pkexec, sudo, su not available. Trying as current user."
+        exec "$SYSTEMCTL_PY" "$@"
+    fi
+fi

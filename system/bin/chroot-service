@@ -2,7 +2,7 @@
 
 # Load environment variables:
 # PREFIX, SVDIR, PATH, etc.
-source /etc/chroot-service/profile
+. /etc/chroot-service/profile
 
 usage() {
 cat <<EOF

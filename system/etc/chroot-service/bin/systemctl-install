@@ -1,0 +1,181 @@
+#!/bin/sh
+
+# This script is used to install chroot-systemctl related files to the container.
+
+CHECK_PATH="bin lib sbin etc"
+SYSTEMCTL_ROOT="${0%/*}/.."
+
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [chrootdir] [command]
+    help        Display this help and exit
+    install     Install chroot-systemctl related files to the container (default)
+    uninstall   Uninstall chroot-systemctl related files from the container
+If 'chrootdir' is not specified, the files will be installed to the current system.
+EOF
+}
+
+#### Auxiliary functions ####
+check_text() {
+    file2check="$1"
+    # Check if file command is available
+    if ! command -v file >/dev/null 2>&1; then
+        # Skipping text check
+        return 0
+    fi
+    # Verify if $file2check is a script
+    if ! file -b --mime-type "$file2check" | grep -q '^text/'; then
+        return 1
+    fi
+    return 0
+}
+
+check_install_applet() {
+    # Usage: check_install_applet <applet_path>
+    # => install <applet_path> to $chrootdir/<applet_path>
+    # e.g. check_install_applet sbin/init => install sbin/init to $chrootdir/sbin/init
+    local applet_path="$1"
+    local target_path="$chrootdir/$applet_path"
+    # Check if target_path exists and is a text file
+    if [ -f "$target_path" ] || [ -L "$target_path" ]; then
+        check_text "$target_path" && return 0
+        install_applet "$applet_path"
+    fi
+    # Install applet
+    return 0
+}
+
+check_uninstall_applet() {
+    local applet_path="$1"
+    local target_path
+    if [ -z "$2" ]; then
+        target_path="$chrootdir/$applet_path"
+    else
+        target_path="$chrootdir/$2"
+    fi
+    # Check if target_path exists and is a text file
+    if [ -f "$target_path" ] || [ -L "$target_path" ]; then
+        check_text "$target_path" &&
+        rm -vf "$target_path"
+    fi
+    return 0
+}
+
+install_applet() {
+    local applet_path="$1"
+    local source_path="$SYSTEMCTL_ROOT/$applet_path"
+    local target_path
+    if [ -z "$2" ]; then
+        target_path="$chrootdir/$applet_path"
+    else
+        target_path="$chrootdir/$2"
+    fi
+
+    if [ -x "$source_path" ]; then
+        install -vDm755 "$source_path" "$target_path"
+    else
+        install -vDm644 "$source_path" "$target_path"
+    fi
+}
+
+### Main functions ###
+# This function handles the main installation logic in three stages:
+# 1. Conditionally replace files in CHECK_PATH.
+# 2. Forcibly install core applets.
+# 3. Forcibly install all files from the 'local' directory.
+install_systemctl() {
+    for path in $CHECK_PATH; do
+        if [ ! -d "$SYSTEMCTL_ROOT/$path" ]; then
+            continue
+        fi
+        # Install everything in the specified path
+        find "$SYSTEMCTL_ROOT/$path" \( -type f -o -type l \) | \
+            sed "s|^$SYSTEMCTL_ROOT/||" | \
+            while IFS= read -r relative_path; do
+                if [ -n "$relative_path" ]; then
+                    check_install_applet "$relative_path"
+                fi
+            done
+    done
+    # Enforce the installation of systemctl applet
+    install_applet "bin/systemctl3.py"
+    [ ! -e "$chrootdir/sbin/init" ] && install_applet "sbin/init"
+    find "$SYSTEMCTL_ROOT/local" \( -type f -o -type l \) | \
+        sed "s|^$SYSTEMCTL_ROOT/||" | \
+        while IFS= read -r relative_path; do
+            if [ -n "$relative_path" ]; then
+                install_applet "$relative_path" "/usr/$relative_path"
+            fi
+        done
+  
+}
+
+uninstall_systemctl() {
+    if [ "$chrootdir" = "/" ]; then
+        cat <<EOF
+############################## WARNING ##############################
+    Uninstalling from the current system is not supported,
+    Please specify a chroot directory to uninstall from.
+    See \`${0##*/} help\` for usage.
+    If you have to remove from the current system,
+    please override via package manager;
+    or manually remove those files;
+    or run \`${0##*/} uninstall\` outside the chroot environment.
+#####################################################################
+EOF
+        return 1
+    else
+        for path in $CHECK_PATH; do
+            find "$SYSTEMCTL_ROOT/$path" \( -type f -o -type l \) | \
+                sed "s|^$SYSTEMCTL_ROOT/||" | \
+                while IFS= read -r relative_path; do
+                    if [ -n "$relative_path" ]; then
+                        check_uninstall_applet "$relative_path"
+                    fi
+                done
+        done
+        find "$SYSTEMCTL_ROOT/local" \( -type f -o -type l \) | \
+            sed "s|^$SYSTEMCTL_ROOT/||" | \
+            while IFS= read -r relative_path; do
+                if [ -n "$relative_path" ]; then
+                    check_uninstall_applet "$relative_path" "/usr/$relative_path"
+                fi
+            done
+        return 0
+    fi
+}
+
+### Main script starts here ###
+if [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    usage
+    exit 0
+fi
+
+if [ -z "$1" ]; then
+    chrootdir="/"
+else
+    if [ ! -d "$1" ]; then
+        echo "Invalid chroot directory: $1" 1>&2
+        exit 1
+    fi
+    chrootdir="$1"
+    shift
+fi
+
+case "$1" in
+    help)
+        usage
+        ;;
+    install|"")
+        # Default action is to install
+        install_systemctl
+        ;;
+    uninstall)
+        uninstall_systemctl
+        ;;
+    *)
+        echo "Unknown command: $1" 1>&2
+        usage
+        exit 1
+        ;;
+esac

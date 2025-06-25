@@ -1,0 +1,19 @@
+#!/data/data/com.termux/files/usr/bin/sh
+#### Start of reserved lines ####
+service=${PWD##*/}
+chrootdir="$(readlink -f $PWD/rootfs)"
+chrootcmd="$(command -v bash) termux-arch-chroot"
+chrootargs="$chrootargs -r -l"
+stopcmdproc=""
+chrootinit="/sbin/init"
+init_args="--quiet"
+#### End of reserved lines ####
+# The first ten lines are reserved to provide the minimum variables for 
+# starting the container, which can be called by other scripts through `head`.
+# Load profiles from $PWD/finish.d
+if test -d $PWD/finish.d; then
+    for profile in $PWD/finish.d/*; do
+        test -r $profile && . $profile
+    done
+    unset profile
+fi

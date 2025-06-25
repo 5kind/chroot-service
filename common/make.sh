@@ -1,2 +1,8 @@
-cd common/arch-install-scripts && make && cd ../..
-install -Dm755 common/arch-install-scripts/termux-arch-chroot system/bin/termux-arch-chroot
+# Install & upgrade from submodule
+set -e
+git_root=$(git rev-parse --show-toplevel)
+cd "$git_root/common/arch-install-scripts"; make
+install -vDm755 "$git_root/common/arch-install-scripts/termux-arch-chroot" \
+"$git_root/system/bin/termux-arch-chroot"
+mkdir -pv "$git_root/system/etc/chroot-service"
+cp -rv "$git_root/common/chroot-systemctl/"* "$git_root/system/etc/chroot-service"

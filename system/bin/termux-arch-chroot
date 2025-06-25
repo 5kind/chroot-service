@@ -1,0 +1,614 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+
+shopt -s extglob
+
+unshare=0
+keepresolvconf=0
+# termux-arch-chroot
+log_level=0
+unshare_level=1
+mount_android=0
+mount_host=0
+mount_safely=0
+bind_mounts=()
+rbind_mounts=()
+mount_fstab=0
+fstab_files=()
+fstab_mounts=""
+later_mounts=()
+
+#!/hint/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# shellcheck disable=SC2059 # $1 and $2 can contain the printf modifiers
+
+out() { printf "$1 $2\n" "${@:3}"; }
+error() { out "==> ERROR:" "$@"; } >&2
+warning() { out "==> WARNING:" "$@"; } >&2
+msg() { out "==>" "$@"; }
+die() { error "$@"; exit 1; }
+
+ignore_error() {
+  "$@" 2>/dev/null
+  return 0
+}
+
+log_msg(){
+  local arg="$@"
+  out "$(date +'%b %d %T') $(hostname) $(basename ${0})[$$]: $arg"
+}
+
+run_msg(){
+  log_msg "$@"
+  "$@"
+}
+
+skip_mounted() {
+  if mountpoint -q "$1"; then
+    warning "$1 is alreadly mounted, skip mount!"
+  else
+    return 1
+  fi
+}
+
+chroot_add_mount() {
+  if skip_mounted $2;then return 0;fi
+  mount "$@" && CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
+}
+
+chroot_maybe_add_mount() {
+  local cond=$1; shift
+  if eval "$cond"; then
+    chroot_add_mount "$@"
+  fi
+}
+
+chroot_try_add_mount() {
+  # 1. mkdir if $dest doesn't exist
+  # 2. bind_device if add_mount fails
+  local src=$1; local dest=$2; shift 2
+  local args="$@"
+
+  [[ ! -e "$dest" ]] && mkdir -p "$dest"
+  chroot_add_mount "$src" "$dest" "$args" 2>/dev/null
+
+  if (( $? )); then
+    src="${dest#$chrootdir}"
+    chroot_bind_device "$src" "$dest"
+  fi
+}
+
+chroot_import_fstab() {
+  # import fstab from fstab_files to fstab_mounts
+  if [[ ! -e $1 ]] ;then
+    return 0
+  else
+    local chroot_fstab=$1
+  fi
+  # -d: import fstab under it; -f: import fstab file
+  if [[ -d $chroot_fstab ]] ;then
+    for fstab_file in $chroot_fstab/fstab* ; do
+      chroot_import_fstab $fstab_file
+    done
+  else
+    fstab_mounts+="$(grep -vE '^\s*(#|$)' "$chroot_fstab")
+"
+  fi
+  # for multiple fstab files
+  shift
+  chroot_import_fstab $@
+}
+
+chroot_mount_line() {
+  # mount $src $dest -t $fstype -o $opts
+  [[ ! -e $src ]] && return 0
+  local dest=$(resolve_link "$dest" "$chrootdir")
+  local line_args="$src $dest -t $fstype -o $opts"
+  # create $dest by $src if $dest doesn't exist
+  [[ ! -e $dest ]] &&
+  if [[ -b "$src" || -d "$src" ]] ;then
+    mkdir -p "$dest"
+  else
+    install -Dm644 /dev/null "$dest"
+  fi
+  # In case of rbind mount, we need to mount it in lazy mode
+  if echo $opts | grep -q "rbind" ;then
+    run_msg chroot_add_mount_lazy ${line_args}
+  else
+    run_msg chroot_add_mount ${line_args}
+  fi
+}
+
+# chroot: remount_fs -> local_fs_pre(fstab/binds/volumes) -> 
+# chroot/unshare_setup -> local_fs()
+chroot_remount_fs() {
+  # 1. If $fstab_mounts is not empty, remount-fs by it.
+  # 2. If $chrootdir is not mounted, bind it.
+  local line=$(echo "$fstab_mounts" | awk '$2=="/" {print}')
+  # mount rootfs from fstab
+  if [[ -n $line ]] ; then
+    local src=$(echo "$line" | awk '{print $1}')
+    local dest=$chrootdir
+    local fstype=$(echo "$line" | awk '{print $3}')
+    local opts=$(echo "$line" | awk '{print $4}')
+    if ! mountpoint -q "$chrootdir"; then
+      chroot_mount_line
+    else
+      mount -o remount,$opts "$chrootdir"
+    fi
+    fstab_mounts=$(echo "$fstab_mounts" | grep -v "$line")
+  fi
+  # bind rootfs to itself
+  if ! mountpoint -q "$chrootdir"; then
+    chroot_add_mount "$chrootdir" "$chrootdir" -o bind,exec,suid,relatime,dev
+  fi
+}
+
+is_early_boot_up() {
+  local target="$1"
+  local pattern="/proc/.*|/sys/.*|/dev/.*|/run/.*|/tmp/.*"
+
+  if [[ "$target" =~ $pattern ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+chroot_early_mount_line() {
+  if is_early_boot_up "$dest"; then
+    later_mounts+=("$src $dest $fstype $opts $dump $pass")
+  else
+    dest="$chrootdir/$dest"
+    chroot_mount_line
+  fi
+}
+
+chroot_add_android() {
+  # Only mount android if $mount_android is set;
+  # Only mount android source in android_(r)binds;
+  # Only mount src to dest when src exist & dest not a link.
+  (( mount_android == 0 )) && return 0
+  local android_binds=(
+    /plat_property_contexts
+    /property_contexts
+    /linkerconfig
+    /odm
+    /data
+    /system
+    /vendor
+    /product
+    /system_ext
+  )
+  local android_rbinds=(
+    /apex
+  )
+  local file
+  for file in ${android_binds[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && bind_mounts+=("$file")
+  done
+
+  for file in ${android_rbinds[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && rbind_mounts+=("$file")
+  done
+  # In Android /storage/emulated/ is fuse filesystem,
+  # which's true path is /data/media/(ext4/f2fs);
+  # we mount /storage/emulated/0 to /storage/emulated/0,
+  # and /data/media/0 to /storage/self/primary;
+  # you can mklink /sdcard -> which you like.
+  file=/storage/emulated/0
+  [[ -e "$file" && ! -L "$chrootdir$file" ]] && 
+  rbind_mounts+=("/storage/emulated/0")
+  file=/data/media/0
+  [[ -e "$file" && ! -L "$chrootdir/storage/self/primary" ]] &&
+  bind_mounts+=("/data/media/0:/storage/self/primary")
+  file=/data/data/com.termux/files/home/.suroot
+  [[ -e "$file" && ! -L "$chrootdir/root" ]] &&
+  bind_mounts+=("/data/data/com.termux/files/home/.suroot:/root")
+  file=/data/data/com.termux/files/usr/tmp/.X11-unix
+  [[ -e "$file" && ! -L "$chrootdir/tmp/.X11-unix" ]] &&
+  bind_mounts+=("/data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix")
+}
+
+chroot_add_safely_files() {
+  (( mount_safely == 0 )) && return 0
+
+  local rw_safely_files=(
+    /tmp
+    /run/shm
+  )
+  local ro_safely_files=(
+    /etc/host.conf
+    /etc/hosts
+    /etc/nsswitch.conf
+  )
+
+  for file in ${rw_safely_files[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && bind_mounts+=("$file")
+  done
+  for file in ${ro_safely_files[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && bind_mounts+=("$file:$file:ro")
+  done
+}
+
+chroot_add_host_files() {
+  (( mount_host == 0 )) && return 0
+  local rw_host_files=(
+    /run
+    /var/run/dbus/system_bus_socket
+  )
+  local ro_host_files=(
+    /etc/hosts.equiv
+    /etc/hostname
+    /etc/mtab
+    /etc/netgroup
+    /etc/networks
+    /etc/passwd
+    /etc/group
+    /etc/localtime
+  )
+
+  for file in ${rw_host_files[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && bind_mounts+=("$file")
+  done
+  for file in ${ro_host_files[@]}; do
+    [[ -e "$file" && ! -L "$chrootdir$file" ]] && bind_mounts+=("$file:$file:ro")
+  done
+  
+  local mount_safely=1
+  chroot_add_safely_files
+}
+
+chroot_mount_fstab() {
+  [[ -z "$fstab_mounts" ]] && return 0
+
+  while read src dest fstype opts dump pass; do
+    chroot_early_mount_line
+  done <<< "$fstab_mounts"
+}
+
+chroot_bind_type() {
+  local src dest opts
+  IFS=':' read -r src dest opts <<< "$bind_info"
+
+  [[ -z "$dest" ]] && dest="$src"
+
+  if [[ -z "$opts" ]] ; then
+    opts="$1"
+  else
+    opts="$1,$opts"
+  fi
+
+  local fstype=none dump=0 pass=0
+  chroot_early_mount_line
+}
+
+chroot_mount_binds() {
+  [[ -z ${bind_mounts[@]} ]] && return 0
+
+  for bind_info in ${bind_mounts[@]}; do
+    chroot_bind_type bind
+  done
+}
+
+chroot_mount_volumes() {
+  [[ -z ${rbind_mounts[@]} ]] && return 0
+
+  for bind_info in ${rbind_mounts[@]}; do
+    chroot_bind_type rbind
+  done
+}
+
+chroot_local_fs_pre() {
+  # Import fstab from fstab files
+  (( mount_fstab == 0 )) || fstab_files+=( "$chrootdir/etc/fstab")
+  chroot_import_fstab ${fstab_files[@]}
+  chroot_remount_fs
+  chroot_add_android
+  chroot_add_host_files
+  chroot_add_safely_files
+  chroot_mount_binds
+  chroot_mount_volumes
+  chroot_mount_fstab
+}
+
+chroot_add_later() {
+  (( ! ${#later_mounts[@]} )) && return 0
+
+  for line in "${later_mounts[@]}"; do
+    read -r src dest fstype opts dump pass <<< "$line"
+    dest="$chrootdir/$dest"
+    chroot_mount_line
+  done
+}
+
+chroot_local_fs() {
+  chroot_add_later
+  mountpoint -q "$1/dev" &&
+  chroot_try_add_mount shm "$1/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev
+  (( $(stat -c "%a" "$1/dev/shm") == 1777 )) 2>/dev/null &&
+  [[ ! -e "$1/run/shm" ]] && ln -s "/dev/shm" "$1/run/shm"
+  mkdir -p "$1/run/lock" &&
+  chmod 1777 "$1/run/lock"
+}
+
+chroot_active_trap() {
+  CHROOT_ACTIVE_MOUNTS=()
+  CHROOT_ACTIVE_LAZY=()
+  CHROOT_ACTIVE_FILES=()
+
+  [[ $(trap -p EXIT) ]] && die '(BUG): attempting to overwrite existing EXIT trap'
+  trap "unshare_teardown" EXIT
+}
+
+chroot_setup() {
+  # 1. fstab;rootfs;bind;rbind;fstab (local_fs_pre)
+  # 2. proc;sys;efivarfs;devtmpfs;devpts;shm;run;tmp
+  # 3. fstab;bind;rbind (local_fs)
+  chroot_active_trap
+  chroot_local_fs_pre "$1" &&
+  chroot_add_mount proc "$1/proc" -t proc -o nosuid,noexec,nodev &&
+  chroot_add_mount sys "$1/sys" -t sysfs -o nosuid,noexec,nodev,ro &&
+  ignore_error chroot_maybe_add_mount "[[ -d '$1/sys/firmware/efi/efivars' ]]" \
+      efivarfs "$1/sys/firmware/efi/efivars" -t efivarfs -o nosuid,noexec,nodev &&
+  chroot_try_add_mount udev "$1/dev" -t devtmpfs -o mode=0755,nosuid &&
+  chroot_try_add_mount devpts "$1/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec &&
+  chroot_add_mount /run "$1/run" --bind --make-private 2>/dev/null ||
+  chroot_add_mount run "$1/run" -t tmpfs -o nosuid,nodev,mode=0755
+  chroot_add_mount tmp "$1/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid &&
+  chroot_local_fs "$1"
+}
+
+chroot_teardown() {
+  if (( ${#CHROOT_ACTIVE_MOUNTS[@]} )); then
+    umount "${CHROOT_ACTIVE_MOUNTS[@]}"
+  fi
+  unset CHROOT_ACTIVE_MOUNTS
+}
+
+chroot_add_mount_lazy() {
+  if skip_mounted $2;then return 0;fi
+  mount "$@" && CHROOT_ACTIVE_LAZY=("$2" "${CHROOT_ACTIVE_LAZY[@]}")
+}
+
+chroot_bind_device() {
+  touch "$2" && CHROOT_ACTIVE_FILES=("$2" "${CHROOT_ACTIVE_FILES[@]}")
+  chroot_add_mount "$1" "$2" --bind
+}
+
+chroot_add_link() {
+  [[ -L "$2" ]] || ln -sf "$1" "$2" && 
+  CHROOT_ACTIVE_FILES=("$2" "${CHROOT_ACTIVE_FILES[@]}")
+}
+
+unshare_setup() {
+  chroot_active_trap
+  chroot_local_fs_pre &&
+  chroot_add_mount_lazy "$1" "$1" --bind &&
+  chroot_add_mount proc "$1/proc" -t proc -o nosuid,noexec,nodev &&
+  chroot_add_mount_lazy /sys "$1/sys" --rbind &&
+  chroot_add_link /proc/self/fd "$1/dev/fd" &&
+  chroot_add_link /proc/self/fd/0 "$1/dev/stdin" &&
+  chroot_add_link /proc/self/fd/1 "$1/dev/stdout" &&
+  chroot_add_link /proc/self/fd/2 "$1/dev/stderr" &&
+  chroot_bind_device /dev/full "$1/dev/full" &&
+  chroot_bind_device /dev/null "$1/dev/null" &&
+  chroot_bind_device /dev/random "$1/dev/random" &&
+  chroot_bind_device /dev/tty "$1/dev/tty" &&
+  chroot_bind_device /dev/urandom "$1/dev/urandom" &&
+  chroot_bind_device /dev/zero "$1/dev/zero" &&
+  chroot_add_mount run "$1/run" -t tmpfs -o nosuid,nodev,mode=0755 &&
+  chroot_add_mount tmp "$1/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid &&
+  chroot_local_fs
+}
+
+unshare_teardown() {
+  if (( ${#CHROOT_ACTIVE_LAZY[@]} )); then
+    umount --lazy "${CHROOT_ACTIVE_LAZY[@]}"
+  fi
+  unset CHROOT_ACTIVE_LAZY
+
+  chroot_teardown
+
+  if (( ${#CHROOT_ACTIVE_FILES[@]} )); then
+      for file in "${CHROOT_ACTIVE_FILES[@]}"; do
+          if [[ -d "$file" ]]; then
+              # Try to remove the directory, it will fail if it is not empty.
+              rmdir -- "$file" 2>/dev/null
+          elif [[ -f "$file" || -L "$file" ]]; then
+              rm -- "$file" 2>/dev/null
+          fi
+      done
+  fi
+  unset CHROOT_ACTIVE_FILES
+}
+
+pid_unshare="unshare --fork --pid"
+$pid_unshare true 2>/dev/null || pid_unshare="unshare --fork"
+mount_unshare="$pid_unshare --mount --map-auto --map-root-user --setuid 0 --setgid 0"
+$mount_unshare true 2>/dev/null || mount_unshare="$pid_unshare --mount"
+
+# This outputs code for declaring all variables to stdout. For example, if
+# FOO=BAR, then running
+#     declare -p FOO
+# will result in the output
+#     declare -- FOO="bar"
+# This function may be used to re-declare all currently used variables and
+# functions in a new shell.
+declare_all() {
+  # Remove read-only variables to avoid warnings. Unfortunately, declare +r -p
+  # doesn't work like it looks like it should (declaring only read-write
+  # variables). However, declare -rp will print out read-only variables, which
+  # we can then use to remove those definitions.
+  declare -p | grep -Fvf <(declare -rp)
+  # Then declare functions
+  declare -pf
+}
+
+
+usage() {
+  cat <<EOF
+usage: ${0##*/} chroot-dir [command] [arguments...]
+
+    -h                  Print this help message
+    -N                  Run in unshare mode as a regular user
+    -u <user>[:group]   Specify non-root user and optional group to use
+    -r                  Do not change the resolv.conf within the chroot
+    -b <src>[:dest:opts]Make the content of <src> accessible in the guest rootfs
+    -v <src>[:dest:opts]Same as -b, but with mount -o rbind (like docker run)
+    -A                  A couple of recommended -b (Mount Android like proot-distro)
+    -R                  A couple of recommended -b (Mount host files like proot -R)
+    -S                  A couple of recommended -b (Mount host files like proot -S)
+    -F                  Make the content of \$chrootdir/etc/fstab accessible
+    -f <src>            Same as -F, but with a specific fstab file
+    -l                  Output log with date, hostname, pid to stdout
+    -n <num>            Specify unshare level: 0~7,it can be seen as a binary number:
+        0 (000)         No unshare. (chroot_setup)
+        1 (001)         Enable pid_unshare. (unshare --pid)
+        2 (010)         Enable mount_unshare. (unshare --mount)
+        4 (100)         Enable unshare_setup.
+
+If 'command' is unspecified, ${0##*/} will launch /bin/bash.
+
+Note that when using arch-chroot, the target chroot directory *should* be a
+mountpoint. This ensures that tools such as pacman(8) or findmnt(8) have an
+accurate hierarchy of the mounted filesystems within the chroot.
+
+If your chroot target is not a mountpoint, this script will mount --bind it
+to make it one, or remount it by \$chrootdir/etc/fstab.
+
+EOF
+}
+
+resolve_link() {
+  local target=$1
+  local root=$2
+
+  # If a root was given, make sure it ends in a slash.
+  [[ -n $root && $root != */ ]] && root=$root/
+
+  while [[ -L $target ]]; do
+    target=$(readlink -m "$target")
+    # If a root was given, make sure the target is under it.
+    # Make sure to strip any leading slash from target first.
+    [[ -n $root && $target != $root* ]] && target=$root${target#/}
+  done
+
+  printf %s "$target"
+}
+
+chroot_add_resolv_conf() {
+  local chrootdir=$1
+  local src
+  local dest="$chrootdir/etc/resolv.conf"
+
+  src=$(resolve_link /etc/resolv.conf)
+
+  # If we don't have a source resolv.conf file, there's nothing useful we can do.
+  [[ -e $src ]] || return 0
+
+  if [[ ! -e "$dest" && ! -h "$dest" ]]; then
+    # There may be no resolv.conf in the chroot. In this case, we'll just exit.
+    # The chroot environment must not be concerned with DNS resolution.
+    return 0
+  fi
+
+  chroot_add_mount "$src" "$dest" -c --bind
+}
+
+arch-chroot() {
+  (( EUID == 0 )) || die 'This script must be run with root privileges'
+
+  [[ -d $chrootdir ]] || die "Can't create chroot on non-directory %s" "$chrootdir"
+
+  (( log_level == 0 )) && eval "log_msg() { :; }"
+
+  $setup "$chrootdir" || die "failed to setup chroot %s" "$chrootdir"
+  if (( ! keepresolvconf )); then
+    chroot_add_resolv_conf "$chrootdir" || die "failed to setup resolv.conf"
+  fi
+
+  chroot_args=()
+  [[ $userspec ]] && chroot_args+=(--userspec "$userspec")
+
+  unset LD_PRELOAD
+  SHELL=/bin/bash $pid_unshare chroot "${chroot_args[@]}" -- "$chrootdir" "${args[@]}"
+}
+
+while getopts ':hNu:rb:v:ARSFf:n:l' flag; do
+  case $flag in
+    h)
+      usage
+      exit 0
+      ;;
+    N)
+      unshare=1
+      ;;
+    u)
+      userspec=$OPTARG
+      ;;
+    r)
+      keepresolvconf=1
+      ;;
+    b)
+      bind_mounts+=("$OPTARG")
+      ;;
+    v)
+      rbind_mounts+=("$OPTARG")
+      ;;
+    A)
+      mount_android=1
+      ;;
+    R)
+      mount_host=1
+      ;;
+    S)
+      mount_safely=1
+      ;;
+    F)
+      mount_fstab=1
+      ;;
+    f)
+      fstab_files+=("$OPTARG")
+      ;;
+    n)
+      unshare_level=$OPTARG
+      ;;
+    l)
+      log_level=1
+      ;;
+    :)
+      die '%s: option requires an argument -- '\''%s'\' "${0##*/}" "$OPTARG"
+      ;;
+    ?)
+      die '%s: invalid option -- '\''%s'\' "${0##*/}" "$OPTARG"
+      ;;
+  esac
+done
+shift $(( OPTIND - 1 ))
+
+(( $# )) || die 'No chroot directory specified'
+chrootdir=$1
+shift
+
+args=("$@")
+if (( unshare )); then
+  # 001 pid_unshare
+  if (( ! unshare_level & 1 )); then
+    unset pid_unshare
+  fi
+  # 010 mount_unshare
+  if (( ! unshare_level & 2 )); then
+    unset mount_unshare
+  fi
+  # 100 unshare_setup
+  if (( ! unshare_level & 4 )); then
+    setup=chroot_setup
+  else
+    setup=unshare_setup
+  fi
+  $mount_unshare bash -c "$(declare_all); arch-chroot"
+else
+  setup=chroot_setup
+  arch-chroot
+fi

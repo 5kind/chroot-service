@@ -1,0 +1,54 @@
+#!/bin/sh
+
+SYSTEMCTL_PY="systemctl3.py"
+
+out() {
+    prefix="$1"
+    shift
+    printf '%s %s\n' "$prefix" "$*"
+}
+error() { out "ERROR:" "$@" >&2; }
+
+usage() {
+    cat <<EOF
+runlevel [OPTIONS...]
+
+Prints the previous and current runlevel of the init system,
+emulated by chroot-systemctl; previous level always equals N.
+
+Options:
+     --help      Show this help
+
+See https://github.com/5kind/chroot-systemctl for details.
+EOF
+}
+
+check_dependencies() {
+    if ! [ -x "/usr/bin/python3" ]; then
+        error "Python 3 is not installed."
+        return 1
+    elif ! command -v "$SYSTEMCTL_PY" >/dev/null 2>&1; then
+        error "$SYSTEMCTL_PY not found in \$PATH."
+        return 1
+    fi
+}
+
+main() {
+    if "$SYSTEMCTL_PY" --quiet is-active graphical.target; then
+        CURRENT_LEVEL="5"
+    elif "$SYSTEMCTL_PY" --quiet is-active multi-user.target; then
+        CURRENT_LEVEL="3"
+    else
+        CURRENT_LEVEL="1"
+    fi
+    PREVIOUS_LEVEL="N"
+    printf '%s %s\n' "$PREVIOUS_LEVEL" "$CURRENT_LEVEL"
+}
+
+check_dependencies || exit 1
+case "$1" in
+    --help|-h) usage; exit 0 ;;
+    *) main ;;
+esac
+
+exit 0

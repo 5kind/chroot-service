@@ -1,1 +1,0 @@
-chrootargs="$chrootargs -v /data/adb/chroot-service/android-permissions/release/aids.conf:/lib/sysusers.d/aids.conf"

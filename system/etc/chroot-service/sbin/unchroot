@@ -1,0 +1,109 @@
+#!/bin/sh
+unchroot_usage() {
+    cat <<EOF
+usage: ${0##*/} [command] [arguments...]
+
+Unchroot to a specific pid's root directory, defaults to /proc/1/root/.
+If you rename ${0##*/} to other names, it will be executed in /proc/1/root/.
+
+Options:
+    -h                  Print this help message
+    -p <pid>            Specify pid of the process to unchroot
+    -u <user>[:group]   Specify non-root user and optional group to use
+
+If no command is given, run '\$SHELL -i' (default: '/bin/sh -i').
+EOF
+}
+
+command_usage() {
+    cat <<EOF
+This is a wrapper provided by 'unchroot'.
+It will execute '${0##*/} $@' inside the host's filesystem.
+Next is the help output from '${0##*/} $@':
+---
+EOF
+    unchroot_exec "$cmd" "$@"
+}
+
+prepend_path () {
+    case ":$PATH:" in
+        *:"$1":*)
+            ;;
+        *)
+            PATH="$1${PATH:+:$PATH}"
+    esac
+}
+
+unchroot_exec() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "This script must be run with root privileges" >&2
+        exit 1
+    fi
+    local target_root=/proc/$pid/root
+    for found_path in ${target_root}/*bin ${target_root}/*/*bin; do
+        if [ -d "$found_path" ] || [ -L "$found_path" ]; then
+            relative_path="${found_path#$target_root}"
+            prepend_path "$relative_path"
+        fi
+    done
+    export PATH
+    if [ -z "$userspec" ]; then
+        exec chroot "$target_root"/ "$@"
+    else
+        exec chroot --userspec="$userspec" "$target_root"/ "$@"
+    fi
+}
+
+unchroot_main() {
+    userspec=""
+    # Parse options
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                unchroot_usage
+                exit 0
+                ;;
+            -p)
+                shift
+                pid="$1"
+                ;;
+            -u)
+                shift
+                userspec="$1"
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                echo "Invalid option: $1" >&2
+                unchroot_usage
+                exit 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+        shift
+    done
+    unchroot_exec "$@"
+}
+
+command_main() {
+    if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+        command_usage "$@"
+        exit 0
+    else
+        unchroot_exec "$cmd" "$@"
+    fi
+}
+
+################################
+# Main Dispatcher
+################################
+cmd="${0##*/}"
+pid="1"
+case "$cmd" in
+    unchroot) unchroot_main "$@" ;;
+    *) command_main "$@" ;;
+esac

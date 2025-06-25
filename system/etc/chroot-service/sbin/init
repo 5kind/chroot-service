@@ -1,0 +1,417 @@
+#!/bin/sh
+
+REPLACE_INIT=/init
+INIT_IS_SCRIPT=true
+SYSTEMCTL_PY=systemctl3.py
+PID_FILE=/run/init.pid
+
+out() {
+    prefix="$1"
+    shift
+    printf '%s %s\n' "$prefix" "$*"
+}
+error() { out "ERROR:" "$@" >&2; }
+warning() { out "WARNING:" "$@" >&2; }
+info() { out "INFO:" "$@"; }
+die() { error "$@"; exit 1; }
+
+ignore_error() {
+  "$@" 2>/dev/null
+  return 0
+}
+
+#######################
+# Replace/Failback
+#######################
+
+check_text() {
+    file2check="$1"
+    # Check if file command is available
+    if ! command -v file >/dev/null 2>&1; then
+        warning "file command not found. Skipping text check."
+        return 0
+    fi
+    # Verify if $file2check is a script
+    if ! file -b --mime-type "$file2check" | grep -q '^text/'; then
+        error "$file2check is not a text."
+        return 1
+    fi
+    return 0
+}
+
+check_shebang() {
+    file2check="$1"
+    first_line=$(head -n 1 "$file2check")
+    # Check if $file2check has a shebang
+    if ! echo "$first_line" | grep -q '^#!'; then
+        warning "$file2check does not have a shebang, skipping shebang check."
+        return 0
+    fi
+    interpreter=$(echo "$first_line" | sed -e 's/^#!//' -e 's/^[[:space:]]*//' -e 's/[[:space:]].*//')
+    # Verify if $interpreter is executable
+    if ! [ -x "$interpreter" ]; then
+        error "$interpreter is not executable."
+        return 1
+    fi
+    return 0
+}
+
+check_replace_init() {
+    # Verify REPLACE_INIT is executable
+    if ! [ -f "$REPLACE_INIT" ]; then
+        return 1
+    fi
+
+    if ! [ -x "$REPLACE_INIT" ]; then
+        error "$REPLACE_INIT is not executable."
+        warning "Skip replace init, use default init."
+        return 1
+    fi
+    # Assume REPLACE_INIT is a script
+    if [ "$INIT_IS_SCRIPT" = "true" ]; then
+        if ! check_text "$REPLACE_INIT" || ! check_shebang "$REPLACE_INIT"; then
+            warning "$REPLACE_INIT is not a valid script. Skip replace init, use default init."
+            return 1
+        fi
+    fi
+}
+
+replace_init() {
+    check_replace_init && exec "$REPLACE_INIT" "$@"
+}
+
+replace_halt() {
+    check_replace_init && exec "$REPLACE_INIT" 0 "$@"
+}
+
+failback_init() {
+    info " Entering failback init sleep loop." >&2
+    exec sleep infinity
+}
+
+check_dependencies() {
+    if ! [ -x "/usr/bin/python3" ]; then
+        error "Python 3 is not installed."
+        return 1
+    elif ! command -v "$SYSTEMCTL_PY" >/dev/null 2>&1; then
+        error "$SYSTEMCTL_PY not found in \$PATH."
+        return 1
+    fi
+}
+
+#######################
+# Main Init
+#######################
+
+detect_proot() {
+    command -v systemd-detect-virt >/dev/null 2>&1 &&
+    [ "$(systemd-detect-virt)" = "proot" ] && return 0
+    [ "$(realpath /proc/$$/root)" != "/" ] && return 0
+    return 1
+}
+
+start_binfmt() {
+    if [ -f /proc/mounts ] && grep -q 'binfmt_misc /proc/sys/fs/binfmt_misc' /proc/mounts; then
+        info " binfmt_misc file system detected. Starting systemd-binfmt.service."
+        $SYSTEMCTL_PY start systemd-binfmt.service
+    else
+        info " binfmt_misc file system not detected. Skipping systemd-binfmt.service."
+    fi
+}
+
+pre_proot() {
+    :;
+}
+
+pre_chroot() {
+    start_binfmt
+}
+
+main_init() {
+    echo $$ > "$PID_FILE"
+    info " PID $$ written to $PID_FILE." >&2
+    replace_init "$@"
+    if ! check_dependencies ;then
+        failback_init "$@"
+    elif detect_proot; then
+        pre_proot "$@"
+    else
+        pre_chroot "$@"
+    fi
+    $SYSTEMCTL_PY default-services
+    exec $SYSTEMCTL_PY init "$@"
+}
+
+#######################
+# Main Halt
+#######################
+SERVICES_TIMEOUT=10
+TERMINATE_TIMEOUT=10
+
+stop_service() {
+    for svc in $($SYSTEMCTL_PY list-units --type=service \
+    --state=running | awk '/.service/ {print $1}'); do
+        $SYSTEMCTL_PY stop "$svc"
+    done
+}
+
+kill_pids() {
+    pids2kill="$*"
+    init_pid=$(cat "$PID_FILE" 2>/dev/null)
+    # Ensure we are not killing the init process itself
+    if [ -z "$pids2kill" ]; then
+        info " No process found to kill."
+        return 0
+    fi
+    info " Killing processes in container: $pids2kill"
+    echo "$pids2kill" | tr ' ' '\n' | sort -rn | while read -r pid; do
+        [ "$pid" -eq "$init_pid" ] && continue
+        info " Sending SIGTERM to PID: $pid"
+        kill "$pid" 2>/dev/null
+    done
+    sleep "$TERMINATE_TIMEOUT"
+    echo "$pids2kill" | tr ' ' '\n' | sort -rn | while read -r pid; do
+        if kill -0 "$pid" 2>/dev/null; then
+            [ "$pid" -eq "$init_pid" ] && continue
+            warning "Sending SIGTERM to PID: $pid"
+            kill -9 "$pid" 2>/dev/null
+        fi
+    done
+    if [ -f "$PID_FILE" ]; then
+        kill "$init_pid" 2>/dev/null
+        info " Sending SIGKILL to init PID: $init_pid"
+        sleep "$TERMINATE_TIMEOUT"
+        if kill -0 "$init_pid" 2>/dev/null; then
+            warning "Sending SIGKILL to init PID: $init_pid"
+            kill -9 "$init_pid" 2>/dev/null
+        fi
+        rm -f "$PID_FILE"
+        info " PID file $PID_FILE removed."
+    fi
+    info " All processes in container killed."
+}
+
+check_chroot() {
+    # Usage: check_chroot [pid1 [pid2]]
+    # check if the pid1 and pid2 are in the same rootfs; Must be run as root;
+    # 1. if <pid2> is not specified, set it to $$ (check_root2=/)
+    #    i.e. check if <pid1> is in the same rootfs as current process
+    # 2. if <pid1> is not specified, set it to 1 (/proc/1/root/)
+    #    i.e. check if current process is in the same rootfs as init process
+    # 3. return: 0 diff rootfs/in chroot, 1 same rootfs/not chroot
+    if [ -z "$2" ]; then
+        check_root2="/"
+    else
+        check_root2="/proc/$2/root/"
+    fi
+    if [ -z "$1" ]; then
+        check_root1="/proc/1/root/"
+    else
+        check_root1="/proc/$1/root/"
+    fi
+    chroot1list1=$(ls -laq $check_root1)
+    chroot2list1=$(ls -laq $check_root2)
+    chroot1list2=$(ls -laq $check_root1)
+    chroot2list2=$(ls -laq $check_root2)
+    if [ "$chroot1list1" != "$chroot1list2" ] || \
+    [ "$chroot2list1" != "$chroot2list2" ]; then
+        # The environment has changed, recheck
+        # return the exit code of recheck
+        check_chroot "$1" "$2"
+        return $?
+    elif [ "$chroot1list1" != "$chroot2list1" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+kill_chroot() {
+    if ! check_chroot; then
+        die "This script should not be run outside chroot."
+    fi
+    pids2kill=""
+    for proc_dir  in /proc/[0-9]*/; do
+        pid=$(basename "$proc_dir")
+        pid_root="$proc_dir/root"
+        if ! [ -r "$pid_root" ]; then
+            continue
+        fi
+        if ! check_chroot "$pid" "$$"; then
+            # Refuse to kill self
+            [ "$pid" -eq $$ ] && continue
+            pids2kill="$pids2kill $pid"
+        fi
+    done
+    kill_pids $pids2kill
+    return 0
+}
+
+kill_proot() {
+    proot_root=$(realpath /proc/$$/root)
+    for proc_dir  in /proc/[0-9]*/; do
+        pid=$(basename "$proc_dir")
+        pid_root="$proc_dir/root"
+        if ! [ -L "$pid_root" ]; then
+            continue
+        fi
+        pid_root=$(realpath "$pid_root")
+        if [ "$pid_root" = "$proot_root" ]; then
+            [ "$pid" -eq $$ ] && continue
+            pids2kill="$pids2kill $pid"
+        fi
+    done
+    kill_pids $pids2kill
+    return 0
+}
+
+systemctl_halt() {
+    $SYSTEMCTL_PY halt "$@"
+    stop_service
+}
+
+main_halt() {
+    replace_halt "$@"
+    if check_dependencies ;then
+        systemctl_halt "$@"
+        sleep "$SERVICES_TIMEOUT"
+    fi
+    kill_chroot
+}
+
+########################
+# Systemd Init
+########################
+systemd_usage() {
+    cat <<EOF
+${0##*/} [OPTIONS...]
+
+Starts and monitors system and user services.
+
+This program is emulated by chroot-systemctl when running in a chroot.
+
+Options:
+  -h --help                      Show this help
+     --version                   Show version
+     --system                    Connect to system manager (default)
+     --user                      Connect to user service manager
+     --no-pager                  Do not pipe output into a pager
+
+See https://github.com/gdraheim/docker-systemctl-replacement for details.
+EOF
+}
+
+systemd_init() {
+    case "$1" in
+        --help|-h)
+            systemd_usage
+            exit 0
+            ;;
+        *)
+            main_init "$@"
+            ;;
+    esac
+}
+
+########################
+# Sysv Init
+########################
+telinit_usage() {
+    cat <<EOF
+${0##*/} [OPTIONS...] COMMAND
+
+Send control commands to the init daemon.
+
+Commands:
+  0              Halt the init daemon
+  6              Reboot the machine
+  2, 3, 4, 5     Start runlevelX.target unit
+  1, s, S        Enter root shell
+  q, Q           Reload init daemon configuration
+  u, U           Reexecute init daemon
+
+Options:
+     --help      Show this help
+     --no-wall   Don't send wall message before halt/power-off/reboot
+
+See https://github.com/5kind/chroot-systemctl for details.
+EOF
+}
+
+start_target() {
+    target="$1"
+    if $SYSTEMCTL_PY is-active "$target"; then
+        info " $target is already active."
+    else
+        info " Starting $target..."
+        $SYSTEMCTL_PY start "$target"
+    fi
+}
+
+sysv_init() {
+    case "$1" in
+        --help|-h)
+            telinit_usage
+            exit 0
+            ;;
+        0)
+            info " Halting the system..."
+            shift
+            main_halt "$@"
+            ;;
+        6)
+            exec reboot "$@"
+            ;;
+        2|3|4)
+            target="multi-user.target"
+            start_target "$target"
+            ;;
+        5)
+            target="graphical.target"
+            start_target "$target"
+            ;;
+        1|s|S)
+            info " Entering root shell..."
+            exec /bin/sh
+            ;;
+        q|Q)
+            info " Reloading init daemon configuration..."
+            $SYSTEMCTL_PY daemon-reload
+            ;;
+        u|U)
+            shift
+            exec "$0" "$@"
+            ;;
+        *)
+            main_init "$@"
+            ;;
+    esac
+}
+
+########################
+# Main script execution
+########################
+cmd=$(basename "$0")
+case "$cmd" in
+    telinit)
+        sysv_init "$@"
+        ;;
+    systemd)
+        systemd_init "$@"
+        ;;
+    halt)
+        main_halt "$@"
+        ;;
+    init|*)
+        if command -v telinit >/dev/null 2>&1; then
+            # If telinit is available, use it for compatibility
+            sysv_init "$@"
+        elif command -v systemctl >/dev/null 2>&1; then
+            systemd_init "$@"
+        else
+            warning "Neither telinit nor systemctl found. Using default init."
+            main_init "$@"
+        fi
+        ;;
+esac
+exit 0

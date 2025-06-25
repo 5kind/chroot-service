@@ -18,10 +18,14 @@ jobs:
       # Step 1: Set up the environment
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: true
 
       # Step 1.5: Build the module
       - name: Build module
         run: |
+          git submodule update --init --remote --merge
           echo "Building the module..."
           chmod +x common/make.sh
           ./common/make.sh
