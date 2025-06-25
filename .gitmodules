@@ -1,6 +1,3 @@
-[submodule "common/android-permissions"]
-	path = common/android-permissions
-	url = https://github.com/5kind/android-permissions
 [submodule "common/chroot-systemctl"]
 	path = common/chroot-systemctl
 	url = https://github.com/5kind/chroot-systemctl
