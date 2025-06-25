@@ -1,6 +1,6 @@
 {
-  "version": "v0.1.0",
-  "versionCode": 1,
-  "zipUrl": "https://github.com/5kind/chroot-service/releases/download/v0.1.0/install.zip",
+  "version": "v0.1.1",
+  "versionCode": 353,
+  "zipUrl": "https://github.com/5kind/chroot-service/releases/download/v0.1.1/install.zip",
   "changelog": "https://raw.githubusercontent.com/5kind/chroot-service/master/changelog.md"
 }

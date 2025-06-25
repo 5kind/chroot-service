@@ -1,7 +1,7 @@
 id=chroot-service
 name=Termux Chroot Container Service
 version=v0.1.1
-versionCode=1
+versionCode=353
 author=5kind
 description=Running chroot containers on Android devices.
 updateJson=https://raw.githubusercontent.com/5kind/chroot-service/master/update.json
