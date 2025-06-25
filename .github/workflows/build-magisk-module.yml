@@ -25,6 +25,8 @@ jobs:
       # Step 1.5: Build the module
       - name: Build module
         run: |
+          sudo apt-get update
+          sudo apt-get install -y asciidoc-base
           echo "Building the module..."
           chmod +x common/make.sh
           ./common/make.sh
