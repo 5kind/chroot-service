@@ -5,6 +5,8 @@ INIT_IS_SCRIPT=true
 SYSTEMCTL_PY=systemctl3.py
 PID_FILE=/run/init.pid
 
+test -f /etc/profile && . /etc/profile
+
 out() {
     prefix="$1"
     shift
@@ -94,7 +96,7 @@ check_dependencies() {
         error "Python 3 is not installed."
         return 1
     elif ! command -v "$SYSTEMCTL_PY" >/dev/null 2>&1; then
-        error "$SYSTEMCTL_PY not found in \$PATH."
+        error "$SYSTEMCTL_PY not found in \$PATH: $PATH."
         return 1
     fi
 }
@@ -391,7 +393,7 @@ sysv_init() {
 ########################
 # Main script execution
 ########################
-cmd=$(basename "$0")
+cmd=${0##*/}
 case "$cmd" in
     telinit)
         sysv_init "$@"
