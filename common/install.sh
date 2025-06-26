@@ -19,4 +19,3 @@ MOD_COMMON="$MODPATH/common"
 MOD_SHARE="/data/adb/$MODID"
 cp -r "$MOD_COMMON/$MODID" /data/adb
 cp -r "$MOD_COMMON/chroot-systemctl" "$MOD_SHARE"
-cp -r "$MOD_COMMON/android-permissions" "$MOD_SHARE"

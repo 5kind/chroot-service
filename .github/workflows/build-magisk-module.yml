@@ -31,63 +31,63 @@ jobs:
           chmod +x common/make.sh
           ./common/make.sh
 
-      # Step 2: Validate version info
-      - name: Validate and Auto-Update update.json
-        id: update_json
+      # Step 2: Calculate, Validate, and Update Versions
+      - name: Calculate, Validate, and Update Versions
+        id: versioning
         run: |
-          echo "Validating versions and update.json..."
+          echo "--- Starting Versioning Process ---"
           
-          # Get version info from module.prop
+          # 1. Read manually maintained version name from module.prop
           prop_version=$(grep 'version=' module.prop | sed 's/.*=//')
-          prop_version_code=$(grep 'versionCode=' module.prop | sed 's/.*=//')
-          echo "module.prop: version=${prop_version}, versionCode=${prop_version_code}"
-
-          # Set version and versionCode as environment variables for release creation
+          echo "Found manual version name: ${prop_version}"
           echo "module_version=${prop_version}" >> $GITHUB_ENV
 
-          # Get version info from update.json, requring jq
-          json_version=$(jq -r '.version' update.json)
-          json_version_code=$(jq -r '.versionCode' update.json)
-          json_zip_url=$(jq -r '.zipUrl' update.json)
-          echo "Current update.json: version=${json_version}, versionCode=${json_version_code}"
+          # 2. Automatically calculate new versionCode
+          echo "Calculating total commits..."
+          main_commits=$(git rev-list --count HEAD)
+          sub_commits=$(git submodule foreach --quiet 'git rev-list --count HEAD' | awk '{s+=$1} END {print s}')
+          # New versionCode = main repo commits + submodule commits + 1 (for this version bump commit)
+          new_version_code=$((main_commits + sub_commits + 1))
+          echo "Calculation: ${main_commits}(main) + ${sub_commits}(submodules) + 1(this commit) = ${new_version_code}"
+          echo "New versionCode: ${new_version_code}"
 
-          # Core logic for version comparison
-          # 1. Check if the version in update.json is newer than the one in module.prop
-          if (( json_version_code > prop_version_code )); then
-            echo "::error::Downgrade detected! The versionCode in update.json (${json_version_code}) is newer than in module.prop (${prop_version_code})."
-            echo "::error::Please increment the version in module.prop before proceeding."
-            exit 1
-          fi
-
-          # 2. Check if the version or Url needs to be updated
+          # 3. Write new versionCode back to module.prop
+          echo "Updating module.prop..."
+          sed -i "s/^versionCode=.*/versionCode=${new_version_code}/" module.prop
+          
+          # 4. Update update.json
+          echo "Updating update.json..."
           expected_zip_url="https://github.com/${{ github.repository }}/releases/download/${prop_version}/install.zip"
-          #   - If the version info or URL is different, update update.json
-          if [ "$prop_version" != "$json_version" ] || [ "$prop_version_code" != "$json_version_code" ] || [ "$expected_zip_url" != "$json_zip_url" ]; then
-            echo "Mismatched data detected. Automatically updating update.json..."
+          
+          jq \
+            --arg ver "$prop_version" \
+            --argjson code "$new_version_code" \
+            --arg url "$expected_zip_url" \
+            '.version = $ver | .versionCode = $code | .zipUrl = $url' \
+            update.json > update.json.tmp && mv update.json.tmp update.json
+            
+          echo "update.json has been updated successfully."
 
-            jq \
-              --arg ver "$prop_version" \
-              --argjson code "$prop_version_code" \
-              --arg url "$expected_zip_url" \
-              '.version = $ver | .versionCode = $code | .zipUrl = $url' \
-              update.json > update.json.tmp && mv update.json.tmp update.json
-
-            echo "update.json has been updated to version ${prop_version}."
+          # 5. Check if there are file changes and set output variable
+          # Use git status --porcelain to accurately detect file modifications
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Changes detected in module.prop or update.json. A commit is needed."
             echo "NEEDS_COMMIT=true" >> $GITHUB_ENV
           else
-            echo "Version validation passed. update.json is already up to date."
+            echo "No version changes needed. Files are up to date."
+            echo "NEEDS_COMMIT=false" >> $GITHUB_ENV
           fi
       
-      # Step 2.5: commit changes to update.json if needed
-      - name: Commit and Push update.json Changes
-        # Only run this step when NEEDS_COMMIT is set by the previous step
-        if: env.NEEDS_COMMIT == 'true'
+      # Step 2.5: Commit all changes if needed
+      - name: Commit and Push All Changes
+        if: steps.versioning.outputs.NEEDS_COMMIT == 'true' || env.NEEDS_COMMIT == 'true' # Compatible with both output and env variable
         run: |
-          echo "Committing changes in update.json..."
+          echo "Committing all detected changes..."
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add update.json
-          git commit -m "ci: Auto-update update.json to version ${{ env.module_version }}"
+          # Use git add -A to stage all changes (additions, modifications, deletions)
+          git add -A
+          git commit -m "ci: Bump versionCode to ${{ env.prop_version_code_new }} and update files" -m "Total commits: ${{ env.total_commits }}"
           git push
 
       # Step 3: Package module files
