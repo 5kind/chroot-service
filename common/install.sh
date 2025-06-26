@@ -19,3 +19,7 @@ MOD_COMMON="$MODPATH/common"
 MOD_SHARE="/data/adb/$MODID"
 cp -r "$MOD_COMMON/$MODID" /data/adb
 cp -r "$MOD_COMMON/chroot-systemctl" "$MOD_SHARE"
+chmod +x "$MOD_SHARE"/chroot-systemctl/*bin/*
+chmod +x "$MOD_SHARE"/chroot-systemctl/run
+chmod +x "$MOD_SHARE"/chroot-systemctl/login
+chmod +x "$MOD_SHARE"/chroot-systemctl/finish
