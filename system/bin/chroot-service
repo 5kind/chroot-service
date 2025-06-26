@@ -79,7 +79,7 @@ logs() {
         usage
         exit 1
     fi
-    tail -F "$SVDIR/$1/log/current"
+    tail -F "$LOGDIR/sv/$1/current"
     shift
     if [ -n "$1" ]; then
         logs "$1"
