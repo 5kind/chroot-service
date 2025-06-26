@@ -96,7 +96,7 @@ create() {
         mkdir -p "$SVDIR/$1/rootfs"
         cd "$SVDIR/$1"
         ln -s /etc/chroot-service/* .
-        rm -rf profile profile.d
+        rm -rf profile* src doc
         touch down
         echo "Service '$1' created, please put your rootfs in '$SVDIR/$1/rootfs'."
     else
