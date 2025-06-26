@@ -2,19 +2,23 @@
 
 # Load environment variables:
 # PREFIX, SVDIR, PATH, etc.
-. /etc/chroot-service/profile
+. /etc/${0##*/}/profile
 
 usage() {
 cat <<EOF
-Usage: chroot-service [-v] [-w sec] command service ...
+Usage: ${0##*/} [-v] [-w sec] command service ...
 This script forwards commands to the sv command.
 
 Options:
-  --help, -h     Show this help message
-  enable [svc]   Enable the specified chroot service
-  disable [svc]  Disable the specified chroot service
-  login [svc]    Login to the specified chroot service
-  *              forward all other commands to \`sv *\`
+    --help, -h      Show this help message
+    enable [svc]    Enable the specified chroot service
+    disable [svc]   Disable the specified chroot service
+    login [svc]     Login to the specified chroot service
+    create [svc]    Create a new chroot service
+    logs [svc]      View logs for the specified chroot service
+    ls, list        List all containers
+    ps              List all container status
+    *               forward all other commands to \`sv *\`
 EOF
 }
 
@@ -52,13 +56,56 @@ login () {
         usage
         exit 1
     fi
-    eval $(PWD="$SVDIR/$1" head "$SVDIR/$1/run")
-    # load chrootdir
-    if [ -z "$chrootdir" ]; then
-        echo "Error: chrootdir not found in $SVDIR/$1/run." >&2
+    if [ -f "$SVDIR/$1/login" ]; then
+        # Load the login script if it exists
+        . "$SVDIR/$1/login"
+    else
+        echo "Error: No login script found for service '$1'." >&2
         exit 1
     fi
-    chroot /proc/$(cat $SVDIR/$1/supervise/pid)/root/"$chrootdir" /bin/sh -l
+}
+
+list_container_status() {
+    cd "$SVDIR" && sv status *
+}
+
+list_container() {
+    cd "$SVDIR" && ls -d *
+}
+
+logs() {
+    if [ -z "$1" ]; then
+        echo "Error: No service specified to view logs." >&2
+        usage
+        exit 1
+    fi
+    tail -F "$SVDIR/$1/log/current"
+    shift
+    if [ -n "$1" ]; then
+        logs "$1"
+    fi
+}
+
+create() {
+    if [ -z "$1" ]; then
+        echo "Error: No service specified to create." >&2
+        usage
+        exit 1
+    fi
+    if [ ! -d "$SVDIR/$1" ]; then
+        mkdir -p "$SVDIR/$1/rootfs"
+        cd "$SVDIR/$1"
+        ln -s /etc/chroot-service/* .
+        rm -rf profile profile.d
+        touch down
+        echo "Service '$1' created, please put your rootfs in '$SVDIR/$1/rootfs'."
+    else
+        echo "Service '$1' already exists."
+    fi
+    shift
+    if [ -n "$1" ]; then
+        create "$1"
+    fi
 }
 
 case "$1" in
@@ -77,6 +124,20 @@ case "$1" in
     login)
         shift
         login "${@}"
+        ;;
+    logs)
+        shift
+        logs "${@}"
+        ;;
+    create)
+        shift
+        create "${@}"
+        ;;
+    ps)
+        list_container_status
+        ;;
+    ls|list)
+        list_container
         ;;
     *)
         exec sv "$@"
