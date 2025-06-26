@@ -2,7 +2,7 @@
 
 <div align="center">
   <!-- Version -->
-    <img src="https://img.shields.io/badge/Version-v0.1.0-blue.svg?longCache=true&style=popout-square"
+    <img src="https://img.shields.io/badge/Version-v0.1.1-blue.svg?longCache=true&style=popout-square"
       alt="Version" />
   <!-- Last Updated -->
     <img src="https://img.shields.io/badge/Updated-6.24 2025-green.svg?longCache=true&style=flat-square"
@@ -30,6 +30,6 @@
 ### Usage
 - Install Termux, upgrade all packages,
 - Install `mount-utils`, `runit` in termux
+- Run `chroot-service create <container-name>` to create a new container skel,
 - Install rootfs to `/data/adb/chroot-service/<container-name>/rootfs`
-- Write `run` script to `/data/adb/chroot-service/<container-name>/run`, see [chroot-systemctl/tree/termux-arch-chroot](https://github.com/5kind/chroot-systemctl/tree/termux-arch-chroot) for example
-- Then follow instructions in [Wiki](https://github.com/5kind/chroot-service/wiki)
+- Then follow instructions in [Wiki](https://github.com/5kind/chroot-service/wiki). (Still work in progress)
