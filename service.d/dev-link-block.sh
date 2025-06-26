@@ -1,2 +1,2 @@
 cd /dev
-ln -sv block/* .
+ln -s block/* .
